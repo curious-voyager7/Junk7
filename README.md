@@ -1,310 +1,133 @@
-
-# MATLAB Lab Experiments
-
-## 1. Histogram Equalization
-
-### MATLAB Script
+### 1. **Image Clustering**
 
 ```matlab
-inputFolder='C:\Users\Soclab2-13\Documents\126018022MATLAB\archive\images\applefruit';
-outputFolder='C:\Users\Soclab2-13\Documents\126018022MATLAB\histe';
-outputSize=[256,256];
+he = imread("hestain.png");
+imshow(he), title('H&E image');
+text(size(he,2),size(he,1)+15, "Image courtesy of Alan Partin, Johns Hopkins University", "FontSize",7,"HorizontalAlignment","right");
 
-if ~exist(outputFolder,'dir')
-    mkdir(outputFolder);
+numColors = 3;
+L = imsegkmeans(he,numColors); 
+B = labeloverlay(he,L); 
+imshow(B)
+title("Labeled Image RGB");
+
+lab_he = rgb2lab(he);
+ab = lab_he(:,:,2:3);
+ab = im2single(ab);
+pixel_labels = imsegkmeans(ab,numColors,"NumAttempts",3); 
+B2 = labeloverlay(he,pixel_labels);
+imshow(B2)
+title("Labeled Image a*b*");
+
+mask1 = pixel_labels == 1; 
+cluster1 = he .* uint8(mask1); 
+imshow(cluster1) 
+title("Objects in Cluster 1");
+
+L = lab_he(:,:,1);
+L_blue = L .* double(mask3); 
+L_blue = rescale(L_blue);
+idx_light_blue = imbinarize(nonzeros(L_blue));
+```
+
+### 2. **Image Edge Detection**
+
+```matlab
+a = imread('D:\Rice.jpg');
+b = rgb2gray(a);
+subplot(2,2,1); 
+imshow(a);
+title('Original Image');
+
+c1 = edge(b,'sobel');
+subplot(2,2,2); 
+imshow(c1); 
+title('Sobel Operator'); 
+
+c2 = edge(b,'prewitt'); 
+subplot(2,2,3);
+imshow(c2);
+title('Prewitt Operator'); 
+
+c3 = edge(b,'roberts'); 
+subplot(2,2,4); 
+imshow(c3); 
+title('Roberts Operator');
+```
+
+### 3. **Machine Learning**
+
+```matlab
+imds = imageDatastore('/MATLAB Drive/kent-mango', 'IncludeSubfolders', true, 'LabelSource', 'foldernames');
+[trainingSet, testSet] = splitEachLabel(imds, 0.8, 'randomized');
+countEachLabel(trainingSet);
+
+cellSize = [4 4];
+img = imread('/MATLAB Drive/kent-mango/defect/Mango_12_A.JPG');
+img = imresize(img, [224 224]);
+img = im2gray(img);
+[hog_4x4, vis4x4] = extractHOGFeatures(img, 'CellSize', cellSize);
+hogFeatureSize = length(hog_4x4);
+numImages = numel(trainingSet.Files);
+trainingFeatures = zeros(numImages, hogFeatureSize, 'single');
+
+for i = 1:numImages
+    img1 = readimage(trainingSet, i);
+    img1 = imresize(img1, [224 224]);
+    img1 = im2gray(img1);
+    trainingFeatures(i, :) = extractHOGFeatures(img1, 'CellSize', cellSize);
 end
 
-imagefiles=dir(fullfile(inputFolder,'*.*'));
-validext={'.jpg','.jpeg','.png','.bmp','.tif','.tiff'};
+trainingLabels = trainingSet.Labels;
+classifier = fitcnet(trainingFeatures, trainingLabels);
 
-for i=1:length(imagefiles)
-    [~,~,ext]=fileparts(imagefiles(i).name);
-    if ismember(lower(ext),validext)
-        imgpath=fullfile(inputFolder,imagefiles(i).name);
-        img=imread(imgpath);
-        img=imresize(img,outputSize);
-        
-        if size(img,3)==1
-            imgeq=histeq(img);
-        else
-            imgeq=img;
-            for c=1:3
-                imgeq(:,:,c)=histeq(img(:,:,c));
-            end
-        end
-        
-        outputpath=fullfile(outputFolder,imagefiles(i).name);
-        imwrite(imgeq,outputpath);
-        fprintf('Processed and saved:%s\n',imagefiles(i).name);
-    end
+numTest = numel(testSet.Files);
+testFeatures = zeros(numTest, hogFeatureSize, 'single');
+for j = 1:numTest
+    imgTest = readimage(testSet, j);
+    imgTest = imresize(imgTest, [224 224]);
+    imgTest = im2gray(imgTest);
+    testFeatures(j, :) = extractHOGFeatures(imgTest, 'CellSize', cellSize);
 end
+
+testLabels = testSet.Labels;
+predictedLabels = predict(classifier, testFeatures);
+confMat = confusionmat(testLabels, predictedLabels);
+confusionchart(confMat);
 ```
 
-### App Designer
+### 4. **Deep Learning**
 
 ```matlab
-% Callbacks that handle component events
-methods (Access = private)
+digitDatasetPath = fullfile(matlabroot,'toolbox','nnet','nndemos','nndatasets','DigitDataset');
+imds = imageDatastore(digitDatasetPath, 'IncludeSubfolders', true, 'LabelSource', 'foldernames');
 
-    % Button pushed function: BrowseImageButton
-    function BrowseImageButtonPushed2(app, event)
-        global l;
-        [filename,filepath]=uigetfile({'*.*,*.jpg;*.png;*.oct;*.bmp'},'select file to open');
-        image=[filepath,filename];
-        l=imread(image);
-        imagesc(app.UIAxes,l);
-    end
+numTrainFiles = 750;
+[imdsTrain, imdsValidation] = splitEachLabel(imds, numTrainFiles, 'randomize');
 
-    % Callback function: HistogramEqButton, UIAxes2
-    function HistogramEqButtonPushed2(app, event)
-        global l;
-        if size(l,3)==1
-            o=histeq(l);
-        else
-            o=l;
-            for c=1:3
-                o(:,:,c)=histeq(l(:,:,c));
-            end
-        end
-        imagesc(app.UIAxes2,o)
-    end
-end
-```
+inputSize = [28 28 1];
+numClasses = 10;
 
----
+layers = [
+    imageInputLayer(inputSize)
+    convolution2dLayer(5, 20)
+    batchNormalizationLayer
+    reluLayer
+    fullyConnectedLayer(numClasses)
+    softmaxLayer
+    classificationLayer
+];
 
-## 2. Image Smoothening Filters
+options = trainingOptions('sgdm', ...
+    'MaxEpochs', 4, ...
+    'ValidationData', imdsValidation, ...
+    'ValidationFrequency', 30, ...
+    'Verbose', false, ...
+    'Plots', 'training-progress');
 
-```matlab
-i=imread('dog.jfif');
-imshow(i);
+net = trainNetwork(imdsTrain, layers, options);
 
-j=imnoise(i,'salt & pepper');
-figure, imshow(j);
-title('portion of image with salt and pepper noise');
-
-i=imread('eight.tif');
-figure, imshow(i)
-title('Image without noise');
-
-j=imnoise(i,'salt & pepper',0.02);
-figure, imshow(j)
-title('image with salt pepper noise');
-
-kavg=filter2(fspecial('average',3),j)/255;
-figure, imshow(kavg)
-title('portion of image with average filter');
-
-kmed=medfilt2(j);
-imshowpair(kavg,kmed,'montage')
-title('image with mean and median filters')
-```
-
----
-
-## 3. Image Sharpening
-
-```matlab
-i=imread("rice.jpg");
-figure,imshow(i);
-
-a=imsharpen(i);
-figure,imshow(a);
-```
-
----
-
-## 4. Plotting Methods
-
-### Line Plot
-
-```matlab
-tbl=readtimetable("rainfall.csv");
-tbl=sortrows(tbl);
-head(tbl,3)
-p=plot(tbl,"rainfall");
-```
-
-### Scatter Plot
-
-```matlab
-data=readtable('rainfall.csv');
-scatter(data,'date','temperature');
-```
-
-### Bubble Chart
-
-```matlab
-bu=readtable('rainfall.csv');
-bubblechart(bu,'rainfall','temperature','humidity');
-```
-
-### Histogram
-
-```matlab
-h=readtable('rainfall.csv');
-histogram(h.rainfall);
-title("histogram of rainfall");
-```
-
-### Box Plot
-
-```matlab
-t=readtable("rainfall.csv");
-boxchart(t.rainfall,t.temperature)
-```
-
-### Pie Chart
-
-```matlab
-piee=readtable("rainfall.csv");
-h=head(piee,5);
-piechart(h.temperature)
-```
-
-### Word Cloud
-
-```matlab
-w='dog.txt';
-d=fileread(w);
-punctuation_characters = ["." "?" "!" "," ";" ":"];
-d = replace(d, punctuation_characters, " ");
-words = split(join(d));
-C = categorical(words);
-wordcloud(C);
-```
-
-### Bar Plot
-
-```matlab
-t=readtable("rainfall.csv");
-bar(t.rainfall)
-```
-
-### Horizontal Bar Plot
-
-```matlab
-b=readtable("rainfall.csv");
-barh(b.temperature)
-```
-
-### Geoplot
-
-```matlab
-tl=readtable("world_country_and_usa_states_latitude_and_longitude_values.csv");
-hh=head(tl,50)
-h=geoplot(hh,"latitude","longitude");
-geobasemap topographic
-```
-
----
-
-## 5. Morphological Operations
-
-### App Designer
-
-```matlab
-% Callbacks that handle component events
-methods (Access = private)
-
-    % Button pushed function: imageButton
-    function imageButtonPushed(app, event)
-        global l;
-        [filename,filepath]=uigetfile({'*.*;*.jpg;*.jpeg;*.png;*.oct;*.bmp;*.jfif'},'select file to open');
-        image=[filepath,filename];
-        l=imread(image);
-        imagesc(app.UIAxes,l);
-    end
-
-    % Button pushed function: dilateButton
-    function dilateButtonPushed(app, event)
-        global l;
-        se = strel("line", 7, 7);
-        d= imdilate(l, se);
-        subplot(2, 3, 2), imshow(d);
-        title("Dilated image");
-        imagesc(app.UIAxes2,d);
-    end
-
-    % Button pushed function: erodedButton
-    function erodedButtonPushed(app, event)
-        global l;
-        se = strel("line", 7, 7);
-        e= imerode(l, se);
-        subplot(2, 3, 3), imshow(e);
-        title("Eroded image");
-        imagesc(app.UIAxes3,e);
-    end
-end
-```
-
----
-
-## 6. Thresholding
-
-```matlab
-i=imread("coin.png");
-imshow(i);
-title("orig image");
-
-g=rgb2gray(i);
-level=multithresh(g);
-seg=imquantize(g,level);
-
-figure,imshow(seg,[]);
-title("after thresholding");
-```
-
----
-
-## 7. Color Image Processing
-
-### App Designer
-
-```matlab
-% Callbacks that handle component events
-methods (Access = private)
-
-    % Button pushed function: imgButton
-    function imgButtonPushed(app, event)
-        global l;
-        [filename,filepath]=uigetfile({'*.*;*.jpg;*.jpeg;*.png;*.oct;*.bmp;*.jfif'},'select file to open');
-        image=[filepath,filename];
-        l=imread(image);
-        imagesc(app.UIAxes,l);
-    end
-
-    % Button pushed function: redButton
-    function redButtonPushed(app, event)
-        global l;
-        r = size(l, 1);
-        c = size(l, 2);
-        R = zeros(r, c, 3);
-        R(:, :, 1) = l(:, :, 1);
-        red=uint8(R);
-        imagesc(app.UIAxes2,red);
-    end
-
-    % Button pushed function: greenButton
-    function greenButtonPushed(app, event)
-        global l;
-        r = size(l, 1);
-        c = size(l, 2);
-        G = zeros(r, c, 3);
-        G(:, :, 2) = l(:, :, 2);
-        gr=uint8(G);
-        imagesc(app.UIAxes3,gr);
-    end
-
-    % Button pushed function: blueButton
-    function blueButtonPushed(app, event)
-        global l;
-        r = size(l, 1);
-        c = size(l, 2);
-        B = zeros(r, c, 3);
-        B(:, :, 3) = l(:, :, 3);
-        b=uint8(B);
-        imagesc(app.UIAxes4,b);
-    end
-end
+YPred = classify(net, imdsValidation);
+YValidation = imdsValidation.Labels;
+accuracy = mean(YPred == YValidation);
 ```
